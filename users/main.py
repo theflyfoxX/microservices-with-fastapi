@@ -15,7 +15,7 @@ app = FastAPI()
 PROTECTED_USER_IDS = [1, 2]
 
 
-@app.post('/api/login', status_code=status.HTTP_201_CREATED)
+@app.post('/api/login', status_code=status.HTTP_200_OK)
 async def login(form_data: UsernamePasswordForm):
     user_in_db = get_user_by_username(form_data.username)
 
@@ -60,12 +60,25 @@ async def create_user(user: UserForm,
 
     return user_in_db
 
-
 @app.get('/api/users', status_code=status.HTTP_200_OK)
-async def get_users(request: Request, response: Response,
-                    request_user_id: str = Header(None)):
-    users = list(get_all_users())
-    return users
+async def get_users(
+    request: Request,
+    response: Response,
+    request_user_id: str = Header(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    if request_user_id is None:
+        raise HTTPException(status_code=401, detail="Missing requester identity.")
+
+    requester = get_user_by_id(int(request_user_id))
+    if not requester:
+        raise HTTPException(status_code=403, detail="Unauthorized requester.")
+
+    all_users = get_all_users()
+    paginated_users = all_users[offset:offset + limit]
+
+    return paginated_users
 
 
 @app.get('/api/users/{user_id}', status_code=status.HTTP_200_OK)
@@ -108,8 +121,8 @@ async def update_user(user_id: int, user: UserUpdateForm,
     user_in_db = get_user_by_id(user_id)
     if not user_in_db:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail='There is already another user with this username.',
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='There is already another user with this id.',
         )
 
     user_in_db = update_user_in_db(user_in_db, user)
